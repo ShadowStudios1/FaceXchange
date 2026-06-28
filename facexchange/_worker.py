@@ -63,6 +63,16 @@ try:
                 except Exception:
                     pass
 
+    # Validate onnxruntime is not an empty namespace package (broken install)
+    import onnxruntime as _ort_check
+    if not hasattr(_ort_check, "InferenceSession"):
+        raise RuntimeError(
+            "onnxruntime package is incomplete (no InferenceSession). "
+            "Re-run the installer or manually run:\n"
+            f"  {_PROJECT_ROOT / '.venv' / 'Scripts' / 'python.exe'} -m pip install --force-reinstall onnxruntime"
+        )
+    del _ort_check
+
     from facexchange.presets import make_preset
     from facexchange.engine import process_video
 except Exception as _e:
