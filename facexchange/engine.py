@@ -64,7 +64,15 @@ def load_models(providers: Optional[list[str]] = None):
     if not swapper_path.exists():
         raise FileNotFoundError(f"Swapper model not found at {swapper_path}")
     log.info(f"Loading face swapper…")
-    _swapper = get_model(str(swapper_path))
+    try:
+        _swapper = get_model(str(swapper_path))
+    except Exception as e:
+        if "protobuf" in str(e).lower() or "onnxruntime" in str(e).lower():
+            raise RuntimeError(
+                "The inswapper_128.onnx model file is corrupted. "
+                "Delete the file and re-run the installer to re-download it."
+            ) from e
+        raise
 
     actual = _swapper.session.get_providers()
     log.info(f"Swapper providers: {actual}")
