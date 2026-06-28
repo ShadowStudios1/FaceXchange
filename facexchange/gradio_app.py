@@ -66,7 +66,12 @@ def _swap_job(
         msg = d.get("msg", "")
         progress(pct / 100, desc=msg)
 
-    result = run_worker(source_path, target_path, preset.id, progress_cb=_cb)
+    settings = {
+        "enhancer": preset.enhancer,
+        "quality": preset.quality,
+        "scale": preset.scale,
+    }
+    result = run_worker(source_path, target_path, settings, progress_cb=_cb)
 
     if result.get("success") and result.get("output_path"):
         return result["output_path"], result.get("message", "Done")
