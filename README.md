@@ -59,7 +59,7 @@ Run both at the same time with `run_telegram.bat` + `run_web.bat`.
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
 | OS | Windows 10 | Windows 11 |
-| Python | 3.10 | 3.11 |
+| Python | 3.10 | 3.11 — 3.12 |
 | RAM | 8 GB | 16 GB |
 | GPU | None (CPU mode) | NVIDIA 4 GB+ VRAM |
 | Disk | 4 GB free | 10 GB free |

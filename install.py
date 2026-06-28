@@ -474,7 +474,7 @@ def install_packages(use_gpu: bool, cuda_version: str, venv_dir: Path) -> bool:
             except Exception:
                 pass
             try:
-                subprocess.run([pip_exe, "install", "--quiet", "onnxruntime"], check=True, timeout=300)
+                subprocess.run([pip_exe, "install", "--quiet", "onnxruntime>=1.20.0,<1.28.0"], check=True, timeout=300)
             except Exception as e:
                 console.print(_error_box(f"CPU runtime install failed: {e}"))
 
