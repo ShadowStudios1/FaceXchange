@@ -337,37 +337,38 @@ def download_models(needs_enhancer: bool) -> bool:
                 except Exception as e:
                     console.print(f"  [red]✗  Extract failed: {e}[/red]")
                     all_ok = False
-            else:
-                dest = MODELS_DIR / name
-                console.print(f"\n  [cyan]📥  {name}[/cyan]  — {info['desc']}")
 
-                with Progress(
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(bar_width=None),
-                    DownloadColumn(),
-                    TransferSpeedColumn(),
-                    TimeRemainingColumn(),
-                ) as progress:
-                    try:
-                        r = requests.get(info["url"], stream=True, timeout=30)
-                        r.raise_for_status()
-                        total = int(r.headers.get("content-length", 0))
-                        task = progress.add_task(f"  [cyan]{name}[/cyan]", total=total)
-                        with open(dest, "wb") as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                                progress.update(task, advance=len(chunk))
-                        expected_bytes = info["size_mb"] * 1024 * 1024
-                        actual_bytes = dest.stat().st_size
-                        if actual_bytes < expected_bytes * 0.95:
-                            dest.unlink(missing_ok=True)
-                            console.print(f"\n  [red]✗  {name} download incomplete ({actual_bytes}/{expected_bytes} bytes)[/red]")
-                            all_ok = False
-                            continue
-                        console.print(f"  [green]✅  {name}[/green]  — downloaded")
-                    except Exception as e:
-                        console.print(f"\n  [red]✗  Download failed: {e}[/red]")
+        else:
+            dest = MODELS_DIR / name
+            console.print(f"\n  [cyan]📥  {name}[/cyan]  — {info['desc']}")
+
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=None),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                try:
+                    r = requests.get(info["url"], stream=True, timeout=30)
+                    r.raise_for_status()
+                    total = int(r.headers.get("content-length", 0))
+                    task = progress.add_task(f"  [cyan]{name}[/cyan]", total=total)
+                    with open(dest, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                            progress.update(task, advance=len(chunk))
+                    expected_bytes = info["size_mb"] * 1024 * 1024
+                    actual_bytes = dest.stat().st_size
+                    if actual_bytes < expected_bytes * 0.95:
+                        dest.unlink(missing_ok=True)
+                        console.print(f"\n  [red]✗  {name} download incomplete ({actual_bytes}/{expected_bytes} bytes)[/red]")
                         all_ok = False
+                        continue
+                    console.print(f"  [green]✅  {name}[/green]  — downloaded")
+                except Exception as e:
+                    console.print(f"\n  [red]✗  Download failed: {e}[/red]")
+                    all_ok = False
 
     return all_ok
 
