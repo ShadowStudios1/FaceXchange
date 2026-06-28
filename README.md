@@ -67,6 +67,55 @@ Run both at the same time with `run_telegram.bat` + `run_web.bat`.
 
 ---
 
+## Prerequisites
+
+### Python
+
+FaceXchange requires **Python 3.10, 3.11, or 3.12** (Python 3.13 and 3.14 are **not** supported yet).
+
+1. Go to [python.org/downloads](https://www.python.org/downloads/)
+2. Download the latest **Python 3.12.x** for Windows (e.g., `python-3.12.x-amd64.exe`)
+3. Run the installer
+4. **IMPORTANT:** At the bottom of the installer, check **"Add Python to PATH"**
+5. Click **Install Now**
+6. After install, open a **Command Prompt** and verify:
+   ```
+   python --version
+   ```
+   You should see `Python 3.12.x`
+
+> ⚠️ **Warning:** Do NOT install Python from the Microsoft Store or via Conda — use the official python.org installer above.
+
+### Git (Optional — for cloning)
+
+If you want to use the clone option instead of ZIP download:
+
+1. Go to [git-scm.com/download/win](https://git-scm.com/download/win)
+2. Download and run the installer (default settings are fine)
+3. After install, open a **Command Prompt** and verify:
+   ```
+   git --version
+   ```
+
+### FFmpeg (Optional — for audio in output videos)
+
+The face swap works without FFmpeg, but output videos will have no audio.
+
+1. Go to [ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+2. Click the **Windows** icon, then download the latest build from **gyan.dev** or **BtbN**
+3. Extract the zip to `C:\ffmpeg`
+4. Add `C:\ffmpeg\bin` to your system **PATH**:
+   - Search "Environment Variables" in Windows
+   - Under **System variables**, find `Path`, click **Edit**
+   - Click **New**, add `C:\ffmpeg\bin`
+   - Click **OK** on all windows
+5. Verify:
+   ```
+   ffmpeg -version
+   ```
+
+---
+
 ## Quick Start
 
 ### 1. Download
