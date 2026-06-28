@@ -54,10 +54,12 @@ def run_worker(
     proc = subprocess.Popen(
         [sys.executable, str(worker_script), str(job_file), str(status_file)],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
     )
 
     last_msg = ""
+    stderr_lines = []
 
     while proc.poll() is None:
         try:
@@ -71,6 +73,9 @@ def run_worker(
         except Exception:
             pass
         time.sleep(1.5)
+
+    if proc.stderr:
+        stderr_lines = [l for l in proc.stderr.read().splitlines() if l.strip()]
 
     result: dict = {}
     try:
@@ -91,6 +96,8 @@ def run_worker(
 
     if not success and not msg:
         msg = "Worker exited without writing status (exit code: {})".format(proc.returncode)
+        if stderr_lines:
+            msg += "\nStderr:\n" + "\n".join(stderr_lines[-10:])
 
     return {
         "success": success,

@@ -12,53 +12,72 @@ import sys
 import time
 from pathlib import Path
 
-# Ensure the project root is on sys.path so we can import facexchange
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT))
+_status_file_path: Path | None = None
 
-# CUDA DLL PATH fix — search pip-installed nvidia packages + known CUDA toolkit locations
-import site as _site
-_nvidia_bin_dirs = []
-# pip-installed CUDA runtime DLLs (nvidia-cublas-cu12, nvidia-cuda-runtime-cu12, etc.)
-for _s in _site.getsitepackages():
-    _pkg_dir = os.path.join(_s, "nvidia")
-    if os.path.isdir(_pkg_dir):
-        for _root, _dirs, _files in os.walk(_pkg_dir):
-            for _d in _dirs:
-                if _d == "bin":
-                    _nvidia_bin_dirs.append(os.path.join(_root, _d))
-            _dirs[:] = [d for d in _dirs if d not in ("include", "lib", "libsrc", "share")]
 
-_cuda_dirs = _nvidia_bin_dirs + [
-    os.path.join(os.environ.get("CUDA_PATH", ""), "bin"),
-    os.path.join(os.path.expanduser("~"), "miniconda3", "envs", "facexchange", "Library", "bin"),
-    os.path.join(os.path.expanduser("~"), "miniconda3", "envs", "facex", "Library", "bin"),
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.7\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.2\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.1\\bin",
-    "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\bin",
-]
-for _d in _cuda_dirs:
-    if os.path.isdir(_d) and _d.lower() not in os.environ.get("PATH", "").lower():
-        os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
-        if hasattr(os, "add_dll_directory"):
-            try:
-                os.add_dll_directory(_d)
-            except Exception:
-                pass
+def _write_status_early(data: dict):
+    global _status_file_path
+    if _status_file_path:
+        try:
+            _status_file_path.write_text(json.dumps(data))
+        except Exception:
+            pass
 
-from facexchange.presets import make_preset
-from facexchange.engine import process_video
+
+try:
+    _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+    import site as _site
+
+    _nvidia_bin_dirs = []
+    for _s in _site.getsitepackages():
+        _pkg_dir = os.path.join(_s, "nvidia")
+        if os.path.isdir(_pkg_dir):
+            for _root, _dirs, _files in os.walk(_pkg_dir):
+                for _d in _dirs:
+                    if _d == "bin":
+                        _nvidia_bin_dirs.append(os.path.join(_root, _d))
+                _dirs[:] = [d for d in _dirs if d not in ("include", "lib", "libsrc", "share")]
+
+    _cuda_dirs = _nvidia_bin_dirs + [
+        os.path.join(os.environ.get("CUDA_PATH", ""), "bin"),
+        os.path.join(os.path.expanduser("~"), "miniconda3", "envs", "facexchange", "Library", "bin"),
+        os.path.join(os.path.expanduser("~"), "miniconda3", "envs", "facex", "Library", "bin"),
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.7\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.6\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.4\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.2\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.1\\bin",
+        "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\bin",
+    ]
+    for _d in _cuda_dirs:
+        if os.path.isdir(_d) and _d.lower() not in os.environ.get("PATH", "").lower():
+            os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+            if hasattr(os, "add_dll_directory"):
+                try:
+                    os.add_dll_directory(_d)
+                except Exception:
+                    pass
+
+    from facexchange.presets import make_preset
+    from facexchange.engine import process_video
+except Exception as _e:
+    import traceback as _tb
+    _write_status_early({"type": "error", "msg": f"Worker init failed: {_e}\n{_tb.format_exc()}", "pct": 0, "success": False})
+    sys.exit(1)
 
 
 def main():
     job_file = Path(sys.argv[1])
     status_file = Path(sys.argv[2])
+
+    global _status_file_path
+    _status_file_path = status_file
+
     t0 = time.time()
 
     def _write_status(data: dict):
