@@ -56,6 +56,15 @@ def _progress_bar(pct: int, width: int = 22) -> str:
 
 
 def _gpu_info() -> str:
+    # First, report what onnxruntime can actually use (the truth).
+    ort_provider = ""
+    try:
+        import onnxruntime as _ort
+        avail = _ort.get_available_providers()
+        ort_provider = "GPU (CUDA)" if "CUDAExecutionProvider" in avail else "CPU"
+    except Exception:
+        ort_provider = "unknown"
+
     try:
         out = subprocess.check_output(
             ["nvidia-smi", "--query-gpu=index,memory.total,memory.used", "--format=csv,noheader,nounits"],
@@ -66,9 +75,11 @@ def _gpu_info() -> str:
             if len(parts) == 3:
                 total, used = int(parts[1]), int(parts[2])
                 free = total - used
-                return f"{used} MB used / {total} MB total ({free} MB free)"
-        return "GPU info unavailable"
+                return f"{ort_provider} · {used} MB used / {total} MB total ({free} MB free)"
+        return f"{ort_provider} · GPU info unavailable"
     except Exception:
+        if ort_provider == "GPU (CUDA)":
+            return f"{ort_provider} · (nvidia-smi unavailable)"
         return "CPU mode (no NVIDIA GPU)"
 
 

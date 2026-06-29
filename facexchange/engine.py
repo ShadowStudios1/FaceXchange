@@ -37,14 +37,52 @@ _swapper: Optional[insightface.model_zoo.model_store.Model] = None
 _job_lock = threading.Lock()
 
 
-def _find_providers() -> list[str]:
+def _onnxruntime_providers() -> list[str]:
+    try:
+        import onnxruntime
+        return list(onnxruntime.get_available_providers())
+    except Exception:
+        return ["CPUExecutionProvider"]
+
+
+def _gpu_present() -> bool:
     try:
         r = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=5)
-        if r.returncode == 0:
-            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        return r.returncode == 0
     except Exception:
-        pass
-    log.warning("GPU not found — using CPU (very slow)")
+        return False
+
+
+def _find_providers() -> list[str]:
+    """Determine which onnxruntime execution providers can actually be used.
+
+    IMPORTANT: we check onnxruntime.get_available_providers() — NOT just nvidia-smi.
+    A system can have an NVIDIA GPU (nvidia-smi works) yet onnxruntime may still lack
+    CUDAExecutionProvider, typically because BOTH `onnxruntime` (CPU) and
+    `onnxruntime-gpu` are pip-installed and the CPU build shadows the GPU build.
+    In that case we must NOT claim GPU mode — otherwise everything silently runs on
+    CPU while the bot reports GPU active.
+    """
+    avail = _onnxruntime_providers()
+    has_cuda = "CUDAExecutionProvider" in avail
+    gpu_hw = _gpu_present()
+
+    if has_cuda:
+        log.info("onnxruntime CUDAExecutionProvider available — using GPU")
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    if gpu_hw:
+        log.error(
+            "NVIDIA GPU detected (nvidia-smi works) but onnxruntime does NOT expose "
+            "CUDAExecutionProvider (available: %s). This is usually caused by BOTH "
+            "onnxruntime (CPU) and onnxruntime-gpu being installed, with the CPU build "
+            "shadowing the GPU build. Falling back to CPU. "
+            "Fix: pip uninstall onnxruntime onnxruntime-gpu -y && "
+            "pip install onnxruntime-gpu==1.24.4 nvidia-cublas-cu12 nvidia-cuda-runtime-cu12",
+            avail,
+        )
+    else:
+        log.warning("GPU not found — using CPU (very slow)")
     return ["CPUExecutionProvider"]
 
 
@@ -55,17 +93,22 @@ def load_models(providers: Optional[list[str]] = None):
     if providers is None:
         providers = _find_providers()
 
-    log.info(f"Loading face analyser (buffalo_l)…")
+    use_gpu = "CUDAExecutionProvider" in providers
+    # ctx_id: >=0 -> GPU 0, -1 -> CPU. Only use GPU when onnxruntime actually
+    # has CUDAExecutionProvider, otherwise insightface silently falls back to CPU.
+    ctx_id = 0 if use_gpu else -1
+
+    log.info(f"Loading face analyser (buffalo_l) on {'GPU' if use_gpu else 'CPU'}…")
     _analyser = FaceAnalysis(name="buffalo_l")
     det_size = 320
-    _analyser.prepare(ctx_id=0, det_size=(det_size, det_size))
+    _analyser.prepare(ctx_id=ctx_id, det_size=(det_size, det_size))
 
     swapper_path = config.MODELS_DIR / "inswapper_128.onnx"
     if not swapper_path.exists():
         raise FileNotFoundError(f"Swapper model not found at {swapper_path}")
-    log.info(f"Loading face swapper…")
+    log.info(f"Loading face swapper (providers={providers})…")
     try:
-        _swapper = get_model(str(swapper_path))
+        _swapper = get_model(str(swapper_path), providers=providers)
     except Exception as e:
         if "protobuf" in str(e).lower() or "onnxruntime" in str(e).lower():
             raise RuntimeError(
@@ -75,7 +118,14 @@ def load_models(providers: Optional[list[str]] = None):
         raise
 
     actual = _swapper.session.get_providers()
-    log.info(f"Swapper providers: {actual}")
+    log.info(f"Swapper active providers: {actual}")
+    if use_gpu and "CUDAExecutionProvider" not in actual:
+        log.error(
+            "Requested CUDAExecutionProvider but swapper is running on %s. "
+            "onnxruntime GPU support is broken — see previous warnings. "
+            "Reinstall onnxruntime-gpu and remove the CPU onnxruntime package.",
+            actual,
+        )
 
 
 def unload_models():

@@ -237,8 +237,8 @@ pip install -r requirements.txt
 pip install onnxruntime
 # For GPU (CUDA 12.x+):
 pip install -r requirements.txt
-pip uninstall onnxruntime -y
-pip install onnxruntime-gpu==1.24.4 nvidia-cublas-cu12 nvidia-cuda-runtime-cu12
+pip uninstall onnxruntime onnxruntime-gpu -y
+pip install onnxruntime-gpu==1.24.4 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12
 set FACEXCHANGE_TOKEN=your_token_here
 python -m facexchange --bot
 ```
@@ -264,24 +264,29 @@ Your system does not have an NVIDIA GPU or the NVIDIA driver is not installed.
 
 ### GPU detected but onnxruntime falls back to CPU
 
-The installer installs CUDA runtime DLLs via pip (`nvidia-cublas-cu12`, `nvidia-cuda-runtime-cu12`).  
-If the engine logs show "CPUExecutionProvider" despite having an NVIDIA GPU:
+The bot reports "GPU (CUDA)" only when onnxruntime actually has `CUDAExecutionProvider` available **and loaded** — not just when `nvidia-smi` works. Two common causes:
 
-1. Open a command prompt in the project folder.
-2. Run:
-   ```
-   .venv\Scripts\python -c "import onnxruntime; print(onnxruntime.get_available_providers())"
-   ```
-3. If `CUDAExecutionProvider` is **not** listed:
-   - Your NVIDIA driver may be too old. Update to driver version **R525+** from [nvidia.com/drivers](https://www.nvidia.com/drivers/).
-   - Or run the installer again and choose **CPU Safe** preset.
-4. If `CUDAExecutionProvider` **is** listed but not used:
-   - This is normal for CPU Safe / Basic GPU presets — those intentionally disable GPU.
-   - For other presets, check `.venv\Lib\site-packages\nvidia\cublas\bin\` exists with DLLs inside.
-   - If missing, re-run the installer or manually run:
-     ```
-     .venv\Scripts\pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12
-     ```
+**1. Both `onnxruntime` (CPU) and `onnxruntime-gpu` installed** — they share the same `onnxruntime` namespace, and the CPU build shadows the GPU build, so `CUDAExecutionProvider` disappears.
+
+Fix:
+```
+.venv\Scripts\pip uninstall onnxruntime onnxruntime-gpu -y
+.venv\Scripts\pip install --no-deps onnxruntime-gpu==1.24.4
+```
+
+**2. Missing CUDA runtime DLLs** — `onnxruntime-gpu` 1.24.x needs the **full** CUDA 12 + cuDNN 9 runtime, not just cublas + cudart. If logs show `cufft64_11.dll missing`, `cublasLt64_12.dll missing`, or `Require cuDNN 9.* and CUDA 12.*`:
+
+```
+.venv\Scripts\pip install nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12
+```
+
+The installer installs the full stack automatically. Re-run the installer if you hit this.
+
+To verify GPU is actually in use, check the bot logs for:
+```
+Swapper active providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+If it shows only `['CPUExecutionProvider']`, GPU is NOT being used — apply the fixes above.
 
 ### "ImportError: No module named onnxruntime"
 
@@ -294,8 +299,8 @@ The onnxruntime package failed to install. Re-run the installer, or manually:
 For GPU:
 
 ```bash
-.venv\Scripts\pip uninstall onnxruntime -y
-.venv\Scripts\pip install onnxruntime-gpu==1.24.4 nvidia-cublas-cu12 nvidia-cuda-runtime-cu12
+.venv\Scripts\pip uninstall onnxruntime onnxruntime-gpu -y
+.venv\Scripts\pip install onnxruntime-gpu==1.24.4 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12
 ```
 
 ### "cublasLt64_XX.dll not found" or "DLL load failed"
@@ -307,9 +312,9 @@ The CUDA runtime DLLs are missing or incompatible. This happens when:
    .venv\Scripts\pip install onnxruntime-gpu==1.24.4
    ```
 2. **NVIDIA driver too old** — Update to driver **R525+** from [nvidia.com/drivers](https://www.nvidia.com/drivers/).
-3. **CUDA runtime DLLs not found** — Re-install CUDA runtime packages:
+3. **CUDA runtime DLLs not found** — Re-install the **full** CUDA 12 + cuDNN 9 stack:
    ```
-   .venv\Scripts\pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12
+   .venv\Scripts\pip install nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12
    ```
 
 ### Model download fails (connection error)
