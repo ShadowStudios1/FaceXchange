@@ -497,26 +497,47 @@ def install_packages(use_gpu: bool, cuda_version: str, venv_dir: Path) -> bool:
                 subprocess.run([pip_exe, "install", "--quiet", "onnxruntime"], check=False, timeout=300)
                 use_gpu = False
 
-        # Verify onnxruntime actually exposes CUDAExecutionProvider.
-        # If the CPU build crept back in (e.g. a dependency reinstalled onnxruntime),
-        # force-remove it and reinstall only onnxruntime-gpu.
+        # Verify onnxruntime can ACTUALLY use CUDA — not just that the provider is
+        # compiled in. get_available_providers() lists CUDA even when the CUDA/cuDNN
+        # runtime DLLs are missing or when the CPU onnxruntime build shadows the GPU
+        # build. We test by creating an InferenceSession with CUDAExecutionProvider
+        # ONLY (no CPU fallback) on a tiny embedded ONNX model. If CUDA can't load
+        # (missing DLLs, namespace conflict, old driver), this raises an exception.
         if use_gpu:
             venv_python = str(venv_dir / "Scripts" / "python.exe")
+            _verify_code = (
+                "import os,site,base64,onnxruntime\n"
+                "for s in site.getsitepackages():\n"
+                "    nd=os.path.join(s,'nvidia')\n"
+                "    if os.path.isdir(nd):\n"
+                "        for r,_,ds in os.walk(nd):\n"
+                "            for d in ds:\n"
+                "                if d=='bin':\n"
+                "                    p=os.path.join(r,d)\n"
+                "                    os.environ['PATH']=p+os.pathsep+os.environ.get('PATH','')\n"
+                "                    if hasattr(os,'add_dll_directory'):\n"
+                "                        try: os.add_dll_directory(p)\n"
+                "                        except OSError: pass\n"
+                "mb=base64.b64decode('CA06OgoQCgF4EgF5IghJZGVudGl0eRIEdGVzdFoPCgF4EgoKCAgBEgQKAggBYg8KAXkSCgoICAESBAoCCAFCBAoAEA0=')\n"
+                "onnxruntime.InferenceSession(mb,providers=['CUDAExecutionProvider'])\n"
+                "print('CUDA_OK')\n"
+            )
             try:
                 r = subprocess.run(
-                    [venv_python, "-c",
-                     "import onnxruntime; print('CUDAExecutionProvider' in onnxruntime.get_available_providers())"],
+                    [venv_python, "-c", _verify_code],
                     capture_output=True, text=True, timeout=30,
                 )
-                cuda_ok = r.returncode == 0 and r.stdout.strip() == "True"
+                cuda_ok = r.returncode == 0 and "CUDA_OK" in r.stdout
             except Exception:
                 cuda_ok = False
 
             if not cuda_ok:
                 console.print(_error_box(
-                    "onnxruntime-gpu installed but CUDAExecutionProvider is NOT available — "
-                    "the CPU onnxruntime build is shadowing it. Repairing…"
+                    "onnxruntime-gpu installed but the CUDA provider cannot be loaded. "
+                    "This usually means a CUDA/cuDNN runtime package is missing, or the CPU "
+                    "onnxruntime build is shadowing the GPU build. Repairing…"
                 ))
+                # Force clean reinstall of the GPU runtime + full CUDA stack
                 subprocess.run(
                     [pip_exe, "uninstall", "onnxruntime", "onnxruntime-gpu", "-y"],
                     capture_output=True, timeout=60,
@@ -525,21 +546,25 @@ def install_packages(use_gpu: bool, cuda_version: str, venv_dir: Path) -> bool:
                     [pip_exe, "install", "--quiet", "--no-deps", onnx_pkg],
                     check=False, timeout=600,
                 )
-                # Re-check
+                subprocess.run(
+                    [pip_exe, "install", "--quiet"] + nvidia_pkgs,
+                    check=False, timeout=600,
+                )
+                # Re-verify
                 try:
                     r = subprocess.run(
-                        [venv_python, "-c",
-                         "import onnxruntime; print('CUDAExecutionProvider' in onnxruntime.get_available_providers())"],
+                        [venv_python, "-c", _verify_code],
                         capture_output=True, text=True, timeout=30,
                     )
-                    cuda_ok = r.returncode == 0 and r.stdout.strip() == "True"
+                    cuda_ok = r.returncode == 0 and "CUDA_OK" in r.stdout
                 except Exception:
                     cuda_ok = False
                 if not cuda_ok:
                     console.print(_error_box(
-                        "GPU runtime could not be activated (CUDAExecutionProvider missing). "
+                        "GPU runtime could not be activated (CUDA provider won't load). "
                         "Falling back to CPU. Update your NVIDIA driver (R525+) and re-run the installer."
                     ))
+                    subprocess.run([pip_exe, "install", "--quiet", "onnxruntime"], check=False, timeout=300)
                     use_gpu = False
     else:
         with console.status("[cyan]Step 2/2: Installing CPU runtime…[/cyan]", spinner="dots12"):
